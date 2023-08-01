@@ -1298,7 +1298,27 @@ It shows two different packets, one being the original UDP packet sent from `fc0
 
 ### Remove the outermost VLAN tag
 
-First we want to show how does it look like without the VLAN removing mechanism 
+Set up an environment:
+
+First create a alias of the script
+
+```c
+eval $(./testenv.sh alias)
+```
+
+and then create an environment for this tutorial
+
+````c
+t setup --name test
+````
+
+First we want to show how does it look like without the VLAN removing mechanism  
+
+```sh
+t reset --vlan
+```
+
+
 
 First in the current added environment
 
@@ -1397,16 +1417,24 @@ listening on test, link-type EN10MB (Ethernet), capture size 262144 bytes
 load the program:
 
 ```sh
+t reset --vlan
+```
+
+and load the program 
+
+``` 
 sudo ./xdp_loader --dev test --progname xdp_vlan_swap_func
 ```
 
-unload the program 
+The port number modified by the XDP program loaded on the `test.1` interface. 
 
-``` 
+unload the program
+
+```
 sudo ./xdp_loader --dev test --unload-all
 ```
 
-The port number modified by the XDP program loaded on the `test.1` interface. 
+
 
 In one terminal:
 
