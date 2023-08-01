@@ -188,6 +188,8 @@ static void stats_collect(int map_fd, __u32 map_type,
 			  struct stats_record *stats_rec)
 {
 	/* Assignment#2: Collect other XDP actions stats  */
+	// The key in an eBPF map is a unique identifier used to access or look up
+	// a specific value in the map.
 	__u32 key = XDP_PASS;
 
 	map_collect(map_fd, map_type, key, &stats_rec->stats[0]);
@@ -212,6 +214,7 @@ static void stats_poll(int map_fd, __u32 map_type, int interval)
 
 	while (1) {
 		prev = record; /* struct copy */
+		/* collect and print the data */
 		stats_collect(map_fd, map_type, &record);
 		stats_print(&record, &prev);
 		sleep(interval);
@@ -310,6 +313,9 @@ int main(int argc, char **argv)
 		return EXIT_OK;
 	}
 
+	/* load a BPF program from an ELF object file, attach it to the XDP hook
+	 * of a network interface, and return a pointer to the loaded XDP
+	 * program. */
 	program = load_bpf_and_xdp_attach(&cfg);
 	if (!program)
 		return EXIT_FAIL_BPF;
@@ -322,7 +328,8 @@ int main(int argc, char **argv)
 	}
 
 	/* Lesson#3: Locate map file descriptor */
-	stats_map_fd = find_map_fd(xdp_program__bpf_obj(program), "xdp_stats_map");
+	/* xdp_stats_map1 is the name of the struct */
+	stats_map_fd = find_map_fd(xdp_program__bpf_obj(program), "xdp_stats_map1");
 	if (stats_map_fd < 0) {
 		/* xdp_link_detach(cfg.ifindex, cfg.xdp_flags, 0); */
 		return EXIT_FAIL_BPF;
