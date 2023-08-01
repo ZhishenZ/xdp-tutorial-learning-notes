@@ -104,7 +104,7 @@ int pin_maps_in_bpf_object(struct bpf_object *bpf_obj, const char *subdir)
 	if (verbose)
 		printf(" - Pinning maps in %s/\n", pin_dir);
 
-	/* This will pin all maps in our bpf_object */
+	/* This will pin all maps associated with our bpf_object */
 	err = bpf_object__pin_maps(bpf_obj, pin_dir);
 	if (err)
 		return EXIT_FAIL_BPF;
