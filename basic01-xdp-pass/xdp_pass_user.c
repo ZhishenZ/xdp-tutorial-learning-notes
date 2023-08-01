@@ -60,12 +60,14 @@ int main(int argc, char **argv)
 		.do_unload = false,
 	};
 
+	// declare and initialize configuration structures for the BPF and XDP.
 	DECLARE_LIBBPF_OPTS(bpf_object_open_opts, bpf_opts);
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts,
                             .open_filename = filename,
                             .prog_name = progname,
                             .opts = &bpf_opts);
-
+    // parse the command-line arguments provided by the user
+	// and save in the cfg struct.
 	parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
 	/* Required option */
 	if (cfg.ifindex == -1) {

@@ -8,6 +8,8 @@
 *.elf
 *.s
 *.ll
+*.txt
+*.dat
 
 # Linker output
 *.ilk
