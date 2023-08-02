@@ -1484,3 +1484,27 @@ Interpretation of the code:
 
 ![add_vlan_header](img/add_vlan_header.jpg)
 
+
+
+
+
+## AF_XDP
+
+To run the example program, open two terminals. 
+
+The first one
+
+```sh
+t ping
+```
+
+and in the other terminal
+
+```sh
+sudo ./af_xdp_user --dev test 
+```
+
+
+
+
+
