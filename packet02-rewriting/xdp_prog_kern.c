@@ -66,11 +66,51 @@ static __always_inline int vlan_tag_pop(struct xdp_md *ctx, struct ethhdr *eth)
 /* Pushes a new VLAN tag after the Ethernet header. Returns 0 on success,
  * -1 on failure.
  */
-// static __always_inline int vlan_tag_push(struct xdp_md *ctx,
-// 					 struct ethhdr *eth, int vlid)
-// {
-// 	return 0;
-// }
+static __always_inline int vlan_tag_push(struct xdp_md *ctx,
+		struct ethhdr *eth, int vlid)
+{
+	void *data_end = (void *)(long)ctx->data_end;
+	struct ethhdr eth_cpy;
+	struct vlan_hdr *vlh;
+
+	/* First copy the original Ethernet header */
+	__builtin_memcpy(&eth_cpy, eth, sizeof(eth_cpy));
+
+	/* Then add space in front of the packet
+	 * by moving the header pointer 4 bytes to the left
+	   4 bytes because the size of vlh is 4 bytes */
+	if (bpf_xdp_adjust_head(ctx, 0 - (int)sizeof(*vlh)))
+		return -1;
+
+	/* Need to re-evaluate data_end and data after head adjustment, and
+	 * bounds check, even though we know there is enough space (as we
+	 * increased it).
+	 */
+	data_end = (void *)(long)ctx->data_end;
+	eth = (void *)(long)ctx->data;
+
+	if (eth + 1 > data_end)
+		return -1;
+
+	/* Copy back Ethernet header in the right place, populate VLAN tag with
+	 * ID and proto, and set outer Ethernet header to VLAN type.
+	 */
+	__builtin_memcpy(eth, &eth_cpy, sizeof(*eth));
+
+	/* This is the place where the header will be inserted */
+	vlh = (void *)(eth + 1);
+
+	if (vlh + 1 > data_end)
+		return -1;
+
+	/* TPID */
+	vlh->h_vlan_TCI = bpf_htons(vlid);
+	/* 2 bytes length/type */
+	vlh->h_vlan_encapsulated_proto = eth->h_proto;
+	/*TPID is 0x8100 */
+	eth->h_proto = bpf_htons(ETH_P_8021Q);
+	return 0;
+}
 
 /* Implement assignment 1 in this section */
 SEC("xdp")
@@ -101,8 +141,8 @@ int xdp_vlan_swap_func(struct xdp_md *ctx)
 	/* Assignment 2 and 3 will implement these. For now they do nothing */
 	if (proto_is_vlan(eth->h_proto))
 		vlan_tag_pop(ctx, eth);
-	// else
-	// 	vlan_tag_push(ctx, eth, 1);
+	else
+		vlan_tag_push(ctx, eth, 1);
 
 	return XDP_PASS;
 }

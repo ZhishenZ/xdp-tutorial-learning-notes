@@ -1468,15 +1468,19 @@ We see that, the incoming network traffic does not have any tag because it is po
 
 
 
+### insert a VLAN header into the Ethernet header
 
 
 
+What does the function do:
+
+![vlan_header](img/vlan_header.png)
+
+https://en.wikipedia.org/wiki/File:Ethernet_802.1Q_Insert.svg
 
 
 
+Interpretation of the code:
 
-
-
-
-
+![add_vlan_header](img/add_vlan_header.jpg)
 
