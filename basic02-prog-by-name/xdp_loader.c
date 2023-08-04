@@ -80,7 +80,7 @@ static void list_avail_progs(struct bpf_object *obj)
 int main(int argc, char **argv)
 {
 	struct config cfg = {
-		.attach_mode = XDP_MODE_NATIVE,
+		.attach_mode = XDP_MODE_UNSPEC,
 		.ifindex     = -1,
 		.do_unload   = false,
 	};
@@ -116,6 +116,7 @@ int main(int argc, char **argv)
 		return EXIT_OK;
 	}
 
+	printf("-----------open BPF file-------------\n");
         /* Open a BPF object file */
         DECLARE_LIBBPF_OPTS(bpf_object_open_opts, bpf_opts);
         obj = bpf_object__open_file(cfg.filename, &bpf_opts);
@@ -131,6 +132,8 @@ int main(int argc, char **argv)
 	if (verbose)
 		list_avail_progs(obj);
 
+	printf("-----------xdp program create-------------\n");
+
 	DECLARE_LIBXDP_OPTS(xdp_program_opts, xdp_opts,
                             .obj = obj,
                             .prog_name = cfg.progname);
@@ -142,6 +145,8 @@ int main(int argc, char **argv)
 		exit(EXIT_FAIL_BPF);
 	}
 
+
+	printf("-----------xdp program attach-------------\n");
 	/* At this point: BPF-progs are (only) loaded by the kernel, and prog
 	 * is our selected program handle. Next step is attaching this prog
 	 * to a kernel hook point, in this case XDP net_device link-level hook.
@@ -151,7 +156,7 @@ int main(int argc, char **argv)
 		perror("xdp_program__attach");
 		exit(err);
 	}
-
+	printf("-----------print loading info -------------\n");
 	if (verbose) {
 		printf("Success: Loaded BPF-object(%s) and used program(%s)\n",
 		       cfg.filename, cfg.progname);

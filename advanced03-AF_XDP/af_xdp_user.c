@@ -39,6 +39,7 @@ static struct xdp_program *prog;
 int xsk_map_fd;
 bool custom_xsk = false;
 struct config cfg = {
+	.attach_mode = XDP_MODE_UNSPEC,
 	.ifindex   = -1,
 };
 
@@ -531,6 +532,8 @@ int main(int argc, char **argv)
 	/* Cmdline options can change progname */
 	parse_cmdline_args(argc, argv, long_options, &cfg, __doc__);
 
+	printf("------------- attach_mode%d\n", cfg.attach_mode );
+	printf("------------- programe name: %s\n", cfg.filename );
 	/* Required option */
 	if (cfg.ifindex == -1) {
 		fprintf(stderr, "ERROR: Required option --dev missing\n\n");
@@ -538,8 +541,15 @@ int main(int argc, char **argv)
 		return EXIT_FAIL_OPTION;
 	}
 
+
+	printf("1111111111111attach_mode%d\n", cfg.attach_mode );
+
 	/* Load custom program if configured */
 	if (cfg.filename[0] != 0) {
+
+
+		printf("*******INSIDE********\n");
+
 		struct bpf_map *map;
 
 		custom_xsk = true;
@@ -570,6 +580,8 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Couldn't attach XDP program on iface '%s' : %s (%d)\n",
 				cfg.ifname, errmsg, err);
 			return err;
+		} else {
+			printf("********** It seems that the program was attached\n");
 		}
 
 		/* We also need to load the xsks_map */
@@ -582,6 +594,8 @@ int main(int argc, char **argv)
 		}
 	}
 
+	printf("222222222222222attach_mode%d\n", cfg.attach_mode );
+
 	/* Allow unlimited locking of memory, so all memory needed for packet
 	 * buffers can be locked.
 	 */
@@ -589,6 +603,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n",
 			strerror(errno));
 		exit(EXIT_FAILURE);
+	} else {
+		printf("********** mAllow unlimited locking of memory\n");
 	}
 
 	/* Allocate memory for NUM_FRAMES of the default XDP frame size */
@@ -599,6 +615,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERROR: Can't allocate buffer memory \"%s\"\n",
 			strerror(errno));
 		exit(EXIT_FAILURE);
+	} else {
+		printf("********** memory allocation finished \n");
 	}
 
 	/* Initialize shared packet_buffer for umem usage */
@@ -607,6 +625,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERROR: Can't create umem \"%s\"\n",
 			strerror(errno));
 		exit(EXIT_FAILURE);
+	} else {
+		printf("********** configure_xsk_umem finished \n");
 	}
 
 	/* Open and configure the AF_XDP (xsk) socket */
@@ -615,6 +635,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "ERROR: Can't setup AF_XDP socket \"%s\"\n",
 			strerror(errno));
 		exit(EXIT_FAILURE);
+	} else {
+		printf("********** It seems that the socket was configured \n");
 	}
 
 	/* Start thread to do statistics display */
