@@ -379,8 +379,21 @@ static void handle_receive_packets(struct xsk_socket_info *xsk)
 		uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
 		uint32_t len = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++)->len;
 
+
+
+
 		if (!process_packet(xsk, addr, len))
 			xsk_free_umem_frame(xsk, addr);
+
+		// Print the data as a string using printf with %.*s format specifier
+		const char *packet_data = (const char *)xsk_umem__get_data(xsk->umem->buffer, addr);
+    	// printf("Received data: %.*s\n", (int)len,packet_data);
+		printf("received Data length: %d\n------------------------------------------------------------------------------\n", (int)len);
+		/* print the bloody package data char by char */
+		for ( int ii = 0 ; ii < len ; ii++){
+			printf("%c", *( packet_data+ii) );
+		}
+		printf("\n------------------------------------------------------------------------------\n");
 
 		xsk->stats.rx_bytes += len;
 	}
@@ -399,8 +412,14 @@ static void rx_and_process(struct config *cfg,
 	int ret, nfds = 1;
 
 	memset(fds, 0, sizeof(fds));
+	/* The file descriptor is a number */
 	fds[0].fd = xsk_socket__fd(xsk_socket->xsk);
 	fds[0].events = POLLIN;
+	/* I do not know why it was not activated before.
+	   Here I manually set the polling mode to be true. */
+	cfg->xsk_poll_mode = true;
+
+	// unsigned long nl = 0;
 
 	while(!global_exit) {
 		if (cfg->xsk_poll_mode) {
@@ -408,6 +427,11 @@ static void rx_and_process(struct config *cfg,
 			if (ret <= 0 || ret > 1)
 				continue;
 		}
+
+		// nl++;
+		// if ( nl%100000000 == 0 ){}
+		// printf("%lu polls, cfg->xsk_poll_mode : %d\n", nl, cfg->xsk_poll_mode);
+
 		handle_receive_packets(xsk_socket);
 	}
 }
@@ -641,6 +665,10 @@ int main(int argc, char **argv)
 
 	/* Start thread to do statistics display */
 	if (verbose) {
+		/* stats_poll_thread is the pointer of the thread
+		   stats_poll is the function that will be executed
+		   xsk_socket is a pointer to socket data structure that we
+		   want to pass into the stats_poll function */
 		ret = pthread_create(&stats_poll_thread, NULL, stats_poll,
 				     xsk_socket);
 		if (ret) {
@@ -650,12 +678,16 @@ int main(int argc, char **argv)
 		}
 	}
 
-	/* Receive and count packets than drop them */
+	/* Receive and count packets than drop them.
+	  The program is stuck here. */
 	rx_and_process(&cfg, xsk_socket);
 
+
 	/* Cleanup */
+
 	xsk_socket__delete(xsk_socket->xsk);
 	xsk_umem__delete(umem->umem);
+	printf("Control+C pressed and then do clean up.\n");
 
 	return EXIT_OK;
 }

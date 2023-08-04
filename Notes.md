@@ -1488,6 +1488,16 @@ Interpretation of the code:
 
 
 
+
+
+When `printf` encounters `%.*s`, it expects two arguments after the format string: the first argument is the width of the string to be printed (`width` in this case), and the second argument is the string to be printed (`str` in this case).
+
+
+
+
+
+
+
 ## AF_XDP
 
 To run the example program, open two terminals. 
@@ -1501,8 +1511,69 @@ t ping
 and in the other terminal
 
 ```sh
-sudo ./af_xdp_user --dev test 
+sudo ./af_xdp_user --dev enp0s31f6 --filename af_xdp_kern.o
 ```
+
+
+
+### Small test for the XDP communication between two Linux machines.  
+
+Send the data from KRC5 to the Linux Laptop which is loaded with a XDP socket. Here we choose the Linux Laptop to test the XDP communication because the KCR5 kernel was with the `CONFIG_BPF_STREAM_PARSER` flag disabled. 
+
+connect the Linux machine with the KCR5 with a network cable. 
+
+We could test the physical network connection with `ping` command
+
+
+
+Start the user space application on the Linux machine. with
+
+```sh
+sudo ./af_xdp_user --dev enp0s31f6 --filename af_xdp_kern.o
+```
+
+and then 
+
+on the KCR5 
+
+```
+echo "Hiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" | nc -u 172.20.255.15 5001
+```
+
+`5001` is the port number but is blocked by the linux machine somehow. But I did not spend time on checking this because the XDP is not affected because of this. 
+
+
+
+On the terminal of Linux, we see the package is transfered by the XDP. 
+
+```sh
+received Data length: 160
+--------------------------
+�.��s`�vE���@@,-�������~EHiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+--------------------------
+AF_XDP RX:            14 pkts (         0 pps)           1 Kbytes (     0 Mbits/s) period:2.000271
+       TX:             0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:2.000271
+```
+
+
+
+
+
+
+
+
+
+<mark>One point that we have been missing:</mark> 
+
+XDP sockets are mainly for efficient packet processing and filtering at the kernel level and do not directly support sending packets back to the network from the XDP program itself: 
+
+1. **XDP_DROP**: Drop the packet immediately.
+2. **XDP_PASS**: Pass the packet to the next step in the networking stack.
+3. **XDP_TX**: Transmit the packet directly from the receive path (loopback).
+4. **XDP_REDIRECT**: Redirect the packet to another NIC or network device.
+5. **XDP_ABORTED**: An error condition that indicates the XDP program could not execute properly.
+
+Also from the return value we could find out that the XDP does not support sending from the userspace directly using the BPF map to the outsider network instances. 
 
 
 
