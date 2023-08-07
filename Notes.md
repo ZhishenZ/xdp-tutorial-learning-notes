@@ -1577,5 +1577,16 @@ Also from the return value we could find out that the XDP does not support sendi
 
 
 
+### Ping between KRC5 and Ubuntu Linux
 
+ping from the KRC5 
+
+ ```sh
+ ping 172.20.255.15
+ ```
+
+and then in the command line
+``` sh
+(base) clemens@ThinkPad-P15s:~/KUKA/xdp-tutorial-learning-notes/advanced03-AF_XDP$ sudo ./af_xdp_user --dev enp0s31f6 --filename af_xdp_kern.o
+```
 

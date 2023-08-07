@@ -26,6 +26,10 @@
 #include <linux/ipv6.h>
 #include <linux/icmpv6.h>
 
+// For struct iphdr and in_addr_t
+#include <netinet/ip_icmp.h>
+#include <netinet/in.h>
+
 #include "../common/common_params.h"
 #include "../common/common_user_bpf_xdp.h"
 #include "../common/common_libbpf.h"
@@ -81,47 +85,51 @@ static const char *__doc__ = "AF_XDP kernel bypass example\n";
 
 static const struct option_wrapper long_options[] = {
 
-	{{"help",	 no_argument,		NULL, 'h' },
-	 "Show help", false},
+	{{"help", no_argument, NULL, 'h'},
+	 "Show help",
+	 false},
 
-	{{"dev",	 required_argument,	NULL, 'd' },
-	 "Operate on device <ifname>", "<ifname>", true},
+	{{"dev", required_argument, NULL, 'd'},
+	 "Operate on device <ifname>",
+	 "<ifname>",
+	 true},
 
-	{{"skb-mode",	 no_argument,		NULL, 'S' },
+	{{"skb-mode", no_argument, NULL, 'S'},
 	 "Install XDP program in SKB (AKA generic) mode"},
 
-	{{"native-mode", no_argument,		NULL, 'N' },
+	{{"native-mode", no_argument, NULL, 'N'},
 	 "Install XDP program in native mode"},
 
-	{{"auto-mode",	 no_argument,		NULL, 'A' },
+	{{"auto-mode", no_argument, NULL, 'A'},
 	 "Auto-detect SKB or native mode"},
 
-	{{"force",	 no_argument,		NULL, 'F' },
+	{{"force", no_argument, NULL, 'F'},
 	 "Force install, replacing existing program on interface"},
 
-	{{"copy",        no_argument,		NULL, 'c' },
+	{{"copy", no_argument, NULL, 'c'},
 	 "Force copy mode"},
 
-	{{"zero-copy",	 no_argument,		NULL, 'z' },
+	{{"zero-copy", no_argument, NULL, 'z'},
 	 "Force zero-copy mode"},
 
-	{{"queue",	 required_argument,	NULL, 'Q' },
+	{{"queue", required_argument, NULL, 'Q'},
 	 "Configure interface receive queue for AF_XDP, default=0"},
 
-	{{"poll-mode",	 no_argument,		NULL, 'p' },
+	{{"poll-mode", no_argument, NULL, 'p'},
 	 "Use the poll() API waiting for packets to arrive"},
 
-	{{"quiet",	 no_argument,		NULL, 'q' },
+	{{"quiet", no_argument, NULL, 'q'},
 	 "Quiet mode (no output)"},
 
-	{{"filename",    required_argument,	NULL,  1  },
-	 "Load program from <file>", "<file>"},
+	{{"filename", required_argument, NULL, 1},
+	 "Load program from <file>",
+	 "<file>"},
 
-	{{"progname",	 required_argument,	NULL,  2  },
-	 "Load program from function <name> in the ELF file", "<name>"},
+	{{"progname", required_argument, NULL, 2},
+	 "Load program from function <name> in the ELF file",
+	 "<name>"},
 
-	{{0, 0, NULL,  0 }, NULL, false}
-};
+	{{0, 0, NULL, 0}, NULL, false}};
 
 static bool global_exit;
 
@@ -187,18 +195,21 @@ static struct xsk_socket_info *xsk_configure_socket(struct config *cfg,
 	xsk_cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
 	xsk_cfg.xdp_flags = cfg->xdp_flags;
 	xsk_cfg.bind_flags = cfg->xsk_bind_flags;
-	xsk_cfg.libbpf_flags = (custom_xsk) ? XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD: 0;
+	xsk_cfg.libbpf_flags = (custom_xsk) ? XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD : 0;
 	ret = xsk_socket__create(&xsk_info->xsk, cfg->ifname,
-				 cfg->xsk_if_queue, umem->umem, &xsk_info->rx,
-				 &xsk_info->tx, &xsk_cfg);
+							 cfg->xsk_if_queue, umem->umem, &xsk_info->rx,
+							 &xsk_info->tx, &xsk_cfg);
 	if (ret)
 		goto error_exit;
 
-	if (custom_xsk) {
+	if (custom_xsk)
+	{
 		ret = xsk_socket__update_xskmap(xsk_info->xsk, xsk_map_fd);
 		if (ret)
 			goto error_exit;
-	} else {
+	}
+	else
+	{
 		/* Getting the program ID must be after the xdp_socket__create() call */
 		if (bpf_xdp_query_id(cfg->ifindex, cfg->xdp_flags, &prog_id))
 			goto error_exit;
@@ -212,18 +223,18 @@ static struct xsk_socket_info *xsk_configure_socket(struct config *cfg,
 
 	/* Stuff the receive path with buffers, we assume we have enough */
 	ret = xsk_ring_prod__reserve(&xsk_info->umem->fq,
-				     XSK_RING_PROD__DEFAULT_NUM_DESCS,
-				     &idx);
+								 XSK_RING_PROD__DEFAULT_NUM_DESCS,
+								 &idx);
 
 	if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS)
 		goto error_exit;
 
-	for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS; i ++)
+	for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS; i++)
 		*xsk_ring_prod__fill_addr(&xsk_info->umem->fq, idx++) =
 			xsk_alloc_umem_frame(xsk_info);
 
 	xsk_ring_prod__submit(&xsk_info->umem->fq,
-			      XSK_RING_PROD__DEFAULT_NUM_DESCS);
+						  XSK_RING_PROD__DEFAULT_NUM_DESCS);
 
 	return xsk_info;
 
@@ -244,18 +255,18 @@ static void complete_tx(struct xsk_socket_info *xsk)
 
 	/* Collect/free completed TX buffers */
 	completed = xsk_ring_cons__peek(&xsk->umem->cq,
-					XSK_RING_CONS__DEFAULT_NUM_DESCS,
-					&idx_cq);
+									XSK_RING_CONS__DEFAULT_NUM_DESCS,
+									&idx_cq);
 
-	if (completed > 0) {
+	if (completed > 0)
+	{
 		for (int i = 0; i < completed; i++)
 			xsk_free_umem_frame(xsk,
-					    *xsk_ring_cons__comp_addr(&xsk->umem->cq,
-								      idx_cq++));
+								*xsk_ring_cons__comp_addr(&xsk->umem->cq,
+														  idx_cq++));
 
 		xsk_ring_cons__release(&xsk->umem->cq, completed);
-		xsk->outstanding_tx -= completed < xsk->outstanding_tx ?
-			completed : xsk->outstanding_tx;
+		xsk->outstanding_tx -= completed < xsk->outstanding_tx ? completed : xsk->outstanding_tx;
 	}
 }
 
@@ -277,12 +288,36 @@ static inline void csum_replace2(__sum16 *sum, __be16 old, __be16 new)
 	*sum = ~csum16_add(csum16_sub(~(*sum), old), new);
 }
 
+
+uint16_t calculate_checksum(const uint16_t *data, int size) {
+    uint32_t sum = 0;
+
+    while (size > 1) {
+        sum += *data++;
+        size -= 2;
+    }
+
+    if (size > 0) {
+        sum += *((uint8_t *)data);
+    }
+
+    while (sum >> 16) {
+        sum = (sum & 0xFFFF) + (sum >> 16);
+    }
+
+    return (uint16_t)(~sum);
+}
+
+int has_same_prefix(in_addr_t ip1, in_addr_t ip2) {
+    return ((ntohl(ip1) >> 16) == (ntohl(ip2) >> 16));
+}
+
 static bool process_packet(struct xsk_socket_info *xsk,
-			   uint64_t addr, uint32_t len)
+						   uint64_t addr, uint32_t len)
 {
 	uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
 
-    /* Lesson#3: Write an IPv6 ICMP ECHO parser to send responses
+	/* Lesson#3: Write an IPv6 ICMP ECHO parser to send responses
 	 *
 	 * Some assumptions to make it easier:
 	 * - No VLAN handling
@@ -291,57 +326,161 @@ static bool process_packet(struct xsk_socket_info *xsk,
 	 *   ICMPV6_ECHO_REPLY
 	 * - Recalculate the icmp checksum */
 
-	if (false) {
-		int ret;
-		uint32_t tx_idx = 0;
-		uint8_t tmp_mac[ETH_ALEN];
-		struct in6_addr tmp_ip;
-		struct ethhdr *eth = (struct ethhdr *) pkt;
-		struct ipv6hdr *ipv6 = (struct ipv6hdr *) (eth + 1);
-		struct icmp6hdr *icmp = (struct icmp6hdr *) (ipv6 + 1);
+	int ret;
+	uint32_t tx_idx = 0;
+	uint8_t tmp_mac[ETH_ALEN];
+	// struct in6_addr tmp_ip6;
+	// struct ethhdr *eth = (struct ethhdr *)pkt;
+	// struct ipv6hdr *ipv6 = (struct ipv6hdr *)(eth + 1);
+	// struct icmp6hdr *icmp = (struct icmp6hdr *)(ipv6 + 1);
 
-		if (ntohs(eth->h_proto) != ETH_P_IPV6 ||
-		    len < (sizeof(*eth) + sizeof(*ipv6) + sizeof(*icmp)) ||
-		    ipv6->nexthdr != IPPROTO_ICMPV6 ||
-		    icmp->icmp6_type != ICMPV6_ECHO_REQUEST)
-			return false;
 
-		memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
-		memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
-		memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+	// for the IPv4
+	struct in_addr tmp_ip;
+	struct ethhdr *eth = (struct ethhdr *)pkt;
+	struct iphdr *ipv4 = (struct iphdr *)(eth + 1);
+	struct icmphdr *icmp = (struct icmphdr *)(ipv4 + 1);
 
-		memcpy(&tmp_ip, &ipv6->saddr, sizeof(tmp_ip));
-		memcpy(&ipv6->saddr, &ipv6->daddr, sizeof(tmp_ip));
-		memcpy(&ipv6->daddr, &tmp_ip, sizeof(tmp_ip));
 
-		icmp->icmp6_type = ICMPV6_ECHO_REPLY;
+	// block all the FKING KUKA broadcast
+	if (ntohs(eth->h_proto) == 24776)
+		return false;
 
-		csum_replace2(&icmp->icmp6_cksum,
-			      htons(ICMPV6_ECHO_REQUEST << 8),
-			      htons(ICMPV6_ECHO_REPLY << 8));
+	// set the old destination as source
+	memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
+	memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+	memcpy(eth->h_source, tmp_mac, ETH_ALEN);
 
-		/* Here we sent the packet out of the receive port. Note that
-		 * we allocate one entry and schedule it. Your design would be
-		 * faster if you do batch processing/transmission */
 
-		ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
-		if (ret != 1) {
-			/* No more transmit slots, drop the packet */
-			return false;
-		}
+	printf("New source address:       ");
+	for ( int i = 0 ; i < ETH_ALEN ;  i++ ){
+		printf("%x:", eth->h_source[i]);
+	}
+	printf("\nNew destination address:  ");
 
-		xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
-		xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
-		xsk_ring_prod__submit(&xsk->tx, 1);
-		xsk->outstanding_tx++;
-
-		xsk->stats.tx_bytes += len;
-		xsk->stats.tx_packets++;
-		return true;
+	for ( int i = 0 ; i < ETH_ALEN ; i++){
+		printf("%x:", eth->h_dest[i]);
 	}
 
-	return false;
+
+
+
+	memcpy(&tmp_ip.s_addr, &ipv4->saddr, sizeof(in_addr_t));
+	memcpy(&ipv4->saddr, &ipv4->daddr, sizeof(in_addr_t));
+	memcpy(&ipv4->daddr, &tmp_ip, sizeof(in_addr_t));
+
+
+	char src_ip_str[INET_ADDRSTRLEN];
+	char dest_ip_str[INET_ADDRSTRLEN];
+
+	inet_ntop(AF_INET, &ipv4->saddr, src_ip_str, INET_ADDRSTRLEN);
+	inet_ntop(AF_INET, &ipv4->daddr, dest_ip_str, INET_ADDRSTRLEN);
+
+	printf("\nSource IPv4 address:      %s\n", src_ip_str);
+	  printf("Destination IPv4 address: %s\n", dest_ip_str);
+
+
+
+	if (!has_same_prefix(ipv4->saddr, ipv4->daddr)) {
+		printf("The IP addresses do not have the same prefix\n");
+		return false;
+	}
+
+
+	icmp->type = ICMP_ECHOREPLY;
+
+	// Recalculate the ICMP checksum for ICMP Echo Reply
+	// For IPv4, the checksum needs to be recalculated since the ICMP type changed.
+	// The kernel does not automatically recalculate it, unlike for IPv6.
+	icmp->checksum = 0; // Set checksum to 0 before calculating
+	icmp->checksum = calculate_checksum((uint16_t *)icmp, ntohs(ipv4->tot_len) - sizeof(struct iphdr));
+	printf("icmp->checksum: %d\n", icmp->checksum);
+
+	/* Here we sent the packet out of the receive port. Note that
+	 * we allocate one entry and schedule it. Your design would be
+	 * faster if you do batch processing/transmission */
+
+	ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
+	if (ret != 1)
+	{
+		/* No more transmit slots, drop the packet */
+		return false;
+	}
+
+	// fill the packet information in the reserved transmit buffer
+	xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
+	xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
+
+	// submits the packet for transmission
+	xsk_ring_prod__submit(&xsk->tx, 1);
+	xsk->outstanding_tx++;
+
+	xsk->stats.tx_bytes += len;
+	xsk->stats.tx_packets++;
+	return true;
 }
+
+
+
+// static bool process_packet(struct xsk_socket_info *xsk,
+//                            uint64_t addr, uint32_t len)
+// {
+//     uint8_t *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+
+//     /* Lesson#3: Write an IPv4 ICMP ECHO parser to send responses
+//      *
+//      * Some assumptions to make it easier:
+//      * - No VLAN handling
+//      * - Only if nexthdr is ICMP
+//      * - Just return all data with MAC/IP swapped, and type set to
+//      *   ICMP_ECHOREPLY
+//      * - Recalculate the icmp checksum */
+
+//     int ret;
+//     uint32_t tx_idx = 0;
+//     uint8_t tmp_mac[ETH_ALEN];
+//     struct in_addr tmp_ip;
+//     struct ethhdr *eth = (struct ethhdr *)pkt;
+//     struct iphdr *ipv4 = (struct iphdr *)(eth + 1);
+//     struct icmphdr *icmp = (struct icmphdr *)(ipv4 + 1);
+
+//     // block all the FCKING KUKA broadcast
+//     if (ntohs(eth->h_proto) == 24776)
+//         return false;
+
+//     memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
+//     memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
+//     memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+
+//     memcpy(&tmp_ip, &ipv4->saddr, sizeof(tmp_ip));
+//     memcpy(&ipv4->saddr, &ipv4->daddr, sizeof(tmp_ip));
+//     memcpy(&ipv4->daddr, &tmp_ip, sizeof(tmp_ip));
+
+//     icmp->type = ICMP_ECHOREPLY;
+
+//     icmp->checksum = 50; // Zero out the checksum before calculating
+//     // icmp->checksum = ip_fast_csum((unsigned char *)icmp, len - sizeof(struct ethhdr) - sizeof(struct iphdr));
+
+//     /* Here we sent the packet out of the receive port. Note that
+//      * we allocate one entry and schedule it. Your design would be
+//      * faster if you do batch processing/transmission */
+
+//     ret = xsk_ring_prod__reserve(&xsk->tx, 1, &tx_idx);
+//     if (ret != 1)
+//     {
+//         /* No more transmit slots, drop the packet */
+//         return false;
+//     }
+
+//     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->addr = addr;
+//     xsk_ring_prod__tx_desc(&xsk->tx, tx_idx)->len = len;
+//     xsk_ring_prod__submit(&xsk->tx, 1);
+//     xsk->outstanding_tx++;
+
+//     xsk->stats.tx_bytes += len;
+//     xsk->stats.tx_packets++;
+//     return true;
+// }
 
 static void handle_receive_packets(struct xsk_socket_info *xsk)
 {
@@ -355,17 +494,18 @@ static void handle_receive_packets(struct xsk_socket_info *xsk)
 
 	/* Stuff the ring with as much frames as possible */
 	stock_frames = xsk_prod_nb_free(&xsk->umem->fq,
-					xsk_umem_free_frames(xsk));
+									xsk_umem_free_frames(xsk));
 
-	if (stock_frames > 0) {
+	if (stock_frames > 0)
+	{
 
 		ret = xsk_ring_prod__reserve(&xsk->umem->fq, stock_frames,
-					     &idx_fq);
+									 &idx_fq);
 
 		/* This should not happen, but just in case */
 		while (ret != stock_frames)
 			ret = xsk_ring_prod__reserve(&xsk->umem->fq, rcvd,
-						     &idx_fq);
+										 &idx_fq);
 
 		for (i = 0; i < stock_frames; i++)
 			*xsk_ring_prod__fill_addr(&xsk->umem->fq, idx_fq++) =
@@ -566,13 +706,9 @@ int main(int argc, char **argv)
 	}
 
 
-	printf("1111111111111attach_mode%d\n", cfg.attach_mode );
-
 	/* Load custom program if configured */
-	if (cfg.filename[0] != 0) {
-
-
-		printf("*******INSIDE********\n");
+	if (cfg.filename[0] != 0)
+	{
 
 		struct bpf_map *map;
 
@@ -618,62 +754,75 @@ int main(int argc, char **argv)
 		}
 	}
 
-	printf("222222222222222attach_mode%d\n", cfg.attach_mode );
-
 	/* Allow unlimited locking of memory, so all memory needed for packet
 	 * buffers can be locked.
 	 */
-	if (setrlimit(RLIMIT_MEMLOCK, &rlim)) {
+	if (setrlimit(RLIMIT_MEMLOCK, &rlim))
+	{
 		fprintf(stderr, "ERROR: setrlimit(RLIMIT_MEMLOCK) \"%s\"\n",
-			strerror(errno));
+				strerror(errno));
 		exit(EXIT_FAILURE);
-	} else {
+	}
+	else
+	{
 		printf("********** mAllow unlimited locking of memory\n");
 	}
 
 	/* Allocate memory for NUM_FRAMES of the default XDP frame size */
 	packet_buffer_size = NUM_FRAMES * FRAME_SIZE;
 	if (posix_memalign(&packet_buffer,
-			   getpagesize(), /* PAGE_SIZE aligned */
-			   packet_buffer_size)) {
+					   getpagesize(), /* PAGE_SIZE aligned */
+					   packet_buffer_size))
+	{
 		fprintf(stderr, "ERROR: Can't allocate buffer memory \"%s\"\n",
-			strerror(errno));
+				strerror(errno));
 		exit(EXIT_FAILURE);
-	} else {
+	}
+	else
+	{
 		printf("********** memory allocation finished \n");
 	}
 
 	/* Initialize shared packet_buffer for umem usage */
 	umem = configure_xsk_umem(packet_buffer, packet_buffer_size);
-	if (umem == NULL) {
+	if (umem == NULL)
+	{
 		fprintf(stderr, "ERROR: Can't create umem \"%s\"\n",
-			strerror(errno));
+				strerror(errno));
 		exit(EXIT_FAILURE);
-	} else {
+	}
+	else
+	{
 		printf("********** configure_xsk_umem finished \n");
 	}
 
 	/* Open and configure the AF_XDP (xsk) socket */
 	xsk_socket = xsk_configure_socket(&cfg, umem);
-	if (xsk_socket == NULL) {
+	if (xsk_socket == NULL)
+	{
 		fprintf(stderr, "ERROR: Can't setup AF_XDP socket \"%s\"\n",
-			strerror(errno));
+				strerror(errno));
 		exit(EXIT_FAILURE);
-	} else {
+	}
+	else
+	{
 		printf("********** It seems that the socket was configured \n");
 	}
 
 	/* Start thread to do statistics display */
-	if (verbose) {
+	if (verbose)
+	{
 		/* stats_poll_thread is the pointer of the thread
 		   stats_poll is the function that will be executed
 		   xsk_socket is a pointer to socket data structure that we
 		   want to pass into the stats_poll function */
 		ret = pthread_create(&stats_poll_thread, NULL, stats_poll,
-				     xsk_socket);
-		if (ret) {
+							 xsk_socket);
+		if (ret)
+		{
 			fprintf(stderr, "ERROR: Failed creating statistics thread "
-				"\"%s\"\n", strerror(errno));
+							"\"%s\"\n",
+					strerror(errno));
 			exit(EXIT_FAILURE);
 		}
 	}
