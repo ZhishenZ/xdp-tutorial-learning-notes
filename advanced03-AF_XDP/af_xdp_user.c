@@ -342,14 +342,14 @@ static bool process_packet(struct xsk_socket_info *xsk,
 	struct icmphdr *icmp = (struct icmphdr *)(ipv4 + 1);
 
 
-	// block all the FKING KUKA broadcast
-	if (ntohs(eth->h_proto) == 24776)
-		return false;
+
 
 	// set the old destination as source
 	memcpy(tmp_mac, eth->h_dest, ETH_ALEN);
 	memcpy(eth->h_dest, eth->h_source, ETH_ALEN);
 	memcpy(eth->h_source, tmp_mac, ETH_ALEN);
+
+	printf("Header: %d",ntohs(eth->h_proto));
 
 
 	printf("New source address:       ");
@@ -745,7 +745,7 @@ int main(int argc, char **argv)
 		}
 
 		/* We also need to load the xsks_map */
-		map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map");
+		map = bpf_object__find_map_by_name(xdp_program__bpf_obj(prog), "xsks_map_local");
 		xsk_map_fd = bpf_map__fd(map);
 		if (xsk_map_fd < 0) {
 			fprintf(stderr, "ERROR: no xsks map found: %s\n",
