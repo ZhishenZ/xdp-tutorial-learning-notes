@@ -1532,7 +1532,7 @@ This is where the concept of calculating the checksum difference comes into play
 
 
 
-### How to run assignment 1
+### Assign 1: Send packets back where they came from 
 
 Here we need two interfaces.
 
@@ -1612,6 +1612,104 @@ Now we have two envrionments:
   10:33:55.830877 IP 10.11.1.1 > 10.11.1.2: ICMP echo reply, id 9757, seq 43, length 64
   10:33:56.854800 IP 10.11.1.2 > 10.11.1.1: ICMP echo request, id 9757, seq 44, length 64
   ```
+
+
+
+### Assign 2: Redirect packets between two interfaces
+
+This is how I understand how would this work:
+
+1. We ping from the `Env 2` inside. A packet arrives at interface 1 from the external device ( `veth0` in `Env 1`). 
+2. You have a BPF program that uses the `bpf_redirect` helper function to redirect the packet to interface `left@if2`. This involves updating the packet's metadata to indicate that it should be forwarded to interface `left@if2`.
+3. interface `left@if2` sends the packet out to its intended destination.
+
+We set up two interfaces
+
+```sh
+$ eval $(./testenv.sh alias)
+$ t setup -n left --legacy-ip
+$ t setup -n right --legacy-ip
+```
+
+The Setup should be 
+
+```sh
+Env 1                         Env 2
+loaded with xdp_pass          loaded with xdp_redirect_func
+----------------------        ----------------------
+| veth0 in 1 (MAC=X2) |       | veth0 in 2 (MAC=Y2) |
+| fc00:dead:cafe:1::2 |       | fc00:dead:cafe:2::2 |
+----------||----------        ----------||----------
+    left@if2 (MAC=X1)  <-------- right@if2 (MAC=Y1)
+```
+
+
+
+* load the interface`veth0` **inside** the `left` environment with the `xdp_pass` function.
+
+  ```sh
+  $ t enter -n left
+  # ./xdp_loader --dev veth0 --progname xdp_pass_func
+  ```
+
+  check the IP of the left environment 
+  ```sh
+  # ip a
+  ...
+  2: veth0@if8: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 xdp/id:80 qdisc noqueue state UP group default qlen 1000
+      link/ether c2:01:56:b7:c8:b2 brd ff:ff:ff:ff:ff:ff link-netnsid 0
+      inet 10.11.1.2/24 scope global veth0
+         valid_lft forever preferred_lft forever
+      inet6 fc00:dead:cafe:1::2/64 scope global 
+         valid_lft forever preferred_lft forever
+      inet6 fe80::c001:56ff:feb7:c8b2/64 scope link 
+         valid_lft forever preferred_lft forever
+  ```
+
+  * write the mac address of the interface `veth0` in environment 2 into the XDP program in the `xdp_prog_kern.c`. 
+  * change the value of the `ifindex` to be the `left@if2`.
+  * then `make` the executable again. 
+
+* load the redirecting program onto the `right` interface  
+
+  ```sh
+  $ sudo ./xdp_loader --dev right --progname xdp_redirect_func
+  ```
+
+  notice that it is easy to get mixed up with the  `progname`. make sure the program name is `xdp_redirect_func`
+
+* enter the left environment and then observe the incoming network traffic. 
+
+  ```sh
+  $ t enter -n left
+  ```
+
+* In the other terminal enter the right environment and ping the `IPV6 Address` of the `env 1` form the `env 2` inside 
+  ```sh
+  $ t enter -n left
+  # ping fc00:dead:cafe:1::2
+  PING fc00:dead:cafe:1::2(fc00:dead:cafe:1::2) 56 data bytes
+  ^C
+  --- fc00:dead:cafe:1::2 ping statistics ---
+  ```
+
+* and then check the network packets recorded by `tcpdump`
+  ```sh
+  # tcpdump
+  tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+  listening on veth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+  ^C17:25:38.713270 IP6 fc00:dead:cafe:2::2 > fc00:dead:cafe:1::2: ICMP6, echo request, seq 1, length 64
+  17:25:38.713297 IP6 fc00:dead:cafe:1::2 > fc00:dead:cafe:2::2: ICMP6, echo reply, seq 1, length 64
+  17:25:39.742385 IP6 fc00:dead:cafe:2::2 > fc00:dead:cafe:1::2: ICMP6, echo request, seq 2, length 64
+  17:25:39.742429 IP6 fc00:dead:cafe:1::2 > fc00:dead:cafe:2::2: ICMP6, echo reply, seq 2, length 64
+  17:25:40.766278 IP6 fc
+  ```
+
+We see that the it looks like there is a direct communication between the two environments `env 1` and `env 2`, although they are isolated from another. 
+
+![XDP_BPF_redirect](img/XDP_BPF_redirect.jpg)
+
+
 
 
 

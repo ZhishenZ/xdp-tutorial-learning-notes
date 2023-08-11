@@ -207,7 +207,11 @@ out:
 	return xdp_stats_record_action(ctx, action);
 }
 
-/* Assignment 2 */
+/*  Assignment 2
+	This function does two things
+	1: change the destination mac address inside the ethernet header
+	2: redirect the packet to the given inteface. */
+
 SEC("xdp")
 int xdp_redirect_func(struct xdp_md *ctx)
 {
@@ -217,8 +221,9 @@ int xdp_redirect_func(struct xdp_md *ctx)
 	struct ethhdr *eth;
 	int eth_type;
 	int action = XDP_PASS;
-	/* unsigned char dst[ETH_ALEN] = {} */	/* Assignment 2: fill in with the MAC address of the left inner interface */
-	/* unsigned ifindex = 0; */		/* Assignment 2: fill in with the ifindex of the left interface */
+	unsigned char dst[ETH_ALEN] = { 0xae, 0xfb, 0x06, 0x50, 0xcb, 0x12 };
+	/* interface number of 9: left@if2 */
+	unsigned ifindex = 9
 
 	/* These keep track of the next header type and iterator pointer */
 	nh.pos = data;
@@ -228,8 +233,9 @@ int xdp_redirect_func(struct xdp_md *ctx)
 	if (eth_type == -1)
 		goto out;
 
-	/* Assignment 2: set a proper destination address and call the
-	 * bpf_redirect() with proper parameters, action = bpf_redirect(...) */
+	/* Assignment 2:  Set a proper destination address */
+	memcpy(eth->h_dest, dst, ETH_ALEN);
+	action = bpf_redirect(ifindex, 0);
 
 out:
 	return xdp_stats_record_action(ctx, action);
