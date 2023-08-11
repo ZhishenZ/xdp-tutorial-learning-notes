@@ -1496,6 +1496,123 @@ When `printf` encounters `%.*s`, it expects two arguments after the format strin
 
 
 
+## Tutorial 7, Redirecting
+
+
+
+
+
+### `XDP_TX`
+
+The `XDP_TX` return value can be used to send the packet back from the same interface it came from. This functionality can be used to implement load balancers, to send simple ICMP replies, etc.
+
+
+
+### `XDP_REDIRECT`
+
+Besides the ability to transmit packets back from the same interface, there is an option to forward packets to egress ports of other interfaces. This can be done using the `bpf_redirect` or `bpf_redirect_map` helpers. These helpers will return the `XDP_REDIRECT` value. The `bpf_redirect` helper takes the interface index of the redirect port as parameter and may be used with other helpers such as `bpf_fib_lookup`. 
+
+
+
+### Big Endian
+
+Addresses within the IPv4/6 header are conventionally stored in big-endian byte order. 
+
+
+
+### Checksum Implementation
+
+When working with network packets or data structures that involve checksums, updating the checksum value directly after modifying the data can be computationally expensive, especially for large data chunks. Calculating the checksum for the entire modified data each time a change is made can introduce unnecessary overhead, especially in performance-sensitive contexts like networking.
+
+This is where the concept of calculating the checksum difference comes into play. Instead of recomputing the checksum for the entire modified data, you can calculate the difference between the old and new checksum values based on the changes made. This difference can then be efficiently applied to the existing checksum value to obtain the updated checksum without needing to recompute it from scratch.
+
+
+
+
+
+
+
+### How to run assignment 1
+
+Here we need two interfaces.
+
+* `veth0@if9` in the `test` environment 
+* `test@if2` in the native environment
+
+create the alias
+
+```sh
+$ eval $(./testenv.sh alias)
+$ t setup -n test --legacy-ip
+```
+
+We **have to** load the interface within the virtual environment with the `xdp_pass_func` 
+
+Because
+
+> Note that in order to the transmit and/or redirect functionality to work, **all** involved devices should have an attached XDP program, including both veth peers.
+
+
+
+Now we have two envrionments:
+
+* Go into the `test` environment
+  ```sh
+  $ t enter test
+  ```
+
+  load the XDP program `xdp_pass_func`onto the `veth0` interface in the directory `/packet03-redirecting`
+  ```sh
+  $ ./xdp_loader --dev veth0 --progname xdp_pass_func
+  ```
+
+* In then load the redirecting program into the local `test` interface
+   ```sh
+   $ sudo ./xdp_loader --dev test --progname xdp_icmp_echo_func
+   ```
+
+* Start the `xdp_stats` program in one terminal
+  ```sh
+  $ sudo ./xdp_stats -d test
+  ```
+
+* And then start a`ping` command in the teminal
+  ```sh 
+  $ t ping --legacy-ip
+  ```
+
+  which pings the IP `10.11.1.1` from inside test environment 
+
+* Then we can See there are packages retransmitted with the return value `XDP_TX`
+  ```sh
+  $ s
+  udo ./xdp_stats -d test
+  
+  Collecting stats from BPF map
+   - BPF map (bpf_map_type:6) id:27 name:xdp_stats_map key_size:4 value_size:16 max_entries:5
+  XDP-action  
+  XDP_ABORTED            0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250323
+  XDP_DROP               0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250283
+  XDP_PASS               0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250283
+  XDP_TX                 2 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250283
+  XDP_REDIRECT           0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250284
+  ```
+
+* The result can also be observed by the `tcpdump` inside the `test`environment.
+  ```sh
+  (base) clemens@ThinkPad-P15s:~/KUKA/xdp-tutorial-learning-notes/testenv$ t enter test
+  root@ThinkPad-P15s:/home/clemens/KUKA/xdp-tutorial-learning-notes/testenv# tcpdump
+  tcpdump: verbose output suppressed, use -v or -vv for full protocol decode
+  listening on veth0, link-type EN10MB (Ethernet), capture size 262144 bytes
+  ^C10:33:53.814915 IP 10.11.1.2 > 10.11.1.1: ICMP echo request, id 9757, seq 41, length 64
+  10:33:53.814948 IP 10.11.1.1 > 10.11.1.2: ICMP echo reply, id 9757, seq 41, length 64
+  10:33:54.816431 IP 10.11.1.2 > 10.11.1.1: ICMP echo request, id 9757, seq 42, length 64
+  10:33:54.816465 IP 10.11.1.1 > 10.11.1.2: ICMP echo reply, id 9757, seq 42, length 64
+  10:33:55.830849 IP 10.11.1.2 > 10.11.1.1: ICMP echo request, id 9757, seq 43, length 64
+  10:33:55.830877 IP 10.11.1.1 > 10.11.1.2: ICMP echo reply, id 9757, seq 43, length 64
+  10:33:56.854800 IP 10.11.1.2 > 10.11.1.1: ICMP echo request, id 9757, seq 44, length 64
+  ```
+
 
 
 ## AF_XDP

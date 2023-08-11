@@ -30,19 +30,81 @@ struct {
 	__uint(max_entries, 1);
 } redirect_params SEC(".maps");
 
+// from the ICMP documentation we know that:
+// The 16 bit one's complement of the one's complement sum of all 16
+// bit words in the header.
+
+static __always_inline __u16 csum_fold_helper(__u32 csum)
+{
+	__u32 sum;
+	// for example we have csum is
+	// 00000000 00000000 10001100 10001100
+
+	sum = (csum >> 16) + (csum & 0xffff);
+	// 00000000 00000000 01111100 01111100
+	// 00000000 00000001 00001001 00001000
+
+	// 00000000 00000001 00001001 00001001
+	sum += (sum >> 16);
+	// because the return value is a u16, only save the last 16 bits
+	// 00001001 00001001
+	return ~sum;
+	// 11110110 11110110
+}
+
+
+/*
+ * The icmp_checksum_diff function takes pointers to old and new structures and
+ * the old checksum and returns the new checksum.  It uses the bpf_csum_diff
+ * helper to compute the checksum difference. Note that the sizes passed to the
+ * bpf_csum_diff helper should be multiples of 4, as it operates on 32-bit
+ * words.
+ */
+
+
+// New Checksum = folded( Old Checksum + Checksum Difference)
+// the old checksum is passed into the the bpf_csum_diff as seed
+static __always_inline __u16 icmp_checksum_diff(
+		__u16 seed,
+		struct icmphdr_common *icmphdr_new,
+		struct icmphdr_common *icmphdr_old)
+{
+	__u32 csum, size = sizeof(struct icmphdr_common);
+
+	csum = bpf_csum_diff((__be32 *)icmphdr_old, size, (__be32 *)icmphdr_new, size, seed);
+	return csum_fold_helper(csum);
+}
+
 static __always_inline void swap_src_dst_mac(struct ethhdr *eth)
 {
+	__u8 h_tmp[ETH_ALEN];
+
+	// For some reason that I do not know, using the `__builtin_memcpy` is more
+	// efficient than the standard library function memcpy
+	__builtin_memcpy(h_tmp, eth->h_source, ETH_ALEN);
+	__builtin_memcpy(eth->h_source, eth->h_dest, ETH_ALEN);
+	__builtin_memcpy(eth->h_dest, h_tmp, ETH_ALEN);
+
+
 	/* Assignment 1: swap source and destination addresses in the eth.
 	 * For simplicity you can use the memcpy macro defined above */
 }
 
 static __always_inline void swap_src_dst_ipv6(struct ipv6hdr *ipv6)
 {
+	struct in6_addr tmp = ipv6->saddr;
+
+	ipv6->saddr = ipv6->daddr;
+	ipv6->daddr = tmp;
 	/* Assignment 1: swap source and destination addresses in the iphv6dr */
 }
 
 static __always_inline void swap_src_dst_ipv4(struct iphdr *iphdr)
 {
+	__be32 tmp = iphdr->saddr;
+
+	iphdr->saddr = iphdr->daddr;
+	iphdr->daddr = tmp;
 	/* Assignment 1: swap source and destination addresses in the iphdr */
 }
 
@@ -59,8 +121,9 @@ int xdp_icmp_echo_func(struct xdp_md *ctx)
 	int icmp_type;
 	struct iphdr *iphdr;
 	struct ipv6hdr *ipv6hdr;
-	__u16 echo_reply;
+	__u16 echo_reply, old_csum;
 	struct icmphdr_common *icmphdr;
+	struct icmphdr_common icmphdr_old;
 	__u32 action = XDP_PASS;
 
 	/* These keep track of the next header type and iterator pointer */
@@ -103,10 +166,40 @@ int xdp_icmp_echo_func(struct xdp_md *ctx)
 	/* Swap Ethernet source and destination */
 	swap_src_dst_mac(eth);
 
-	/* Assignment 1: patch the packet and update the checksum. You can use
-	 * the echo_reply variable defined above to fix the ICMP Type field. */
+	// Because we have changed the packet header and for this reason,
+	// we have to update the checksum
 
-	bpf_printk("echo_reply: %d", echo_reply);
+	/* Patch the packet and update the checksum.*/
+	old_csum = icmphdr->cksum;
+	icmphdr->cksum = 0;
+	icmphdr_old = *icmphdr;
+
+	// we changed the content of the header
+	icmphdr->type = echo_reply;
+	// I guess for some reason, this updates the cksum (checksum) because we
+	// set the value of cksum to be 0 and set the seed to be the
+	icmphdr->cksum = icmp_checksum_diff(~old_csum, icmphdr, &icmphdr_old);
+
+	/* Another, less generic, but a bit more efficient way to update the
+	 * checksum is listed below.  As only one 16-bit word changed, the sum
+	 * can be patched using this formula: sum' = ~(~sum + ~m0 + m1), where
+	 * sum' is a new sum, sum is an old sum, m0 and m1 are the old and new
+	 * 16-bit words, correspondingly. In the formula above the + operation
+	 * is defined as the following function:
+	 *
+	 *     static __always_inline __u16 csum16_add(__u16 csum, __u16 addend)
+	 *     {
+	 *         csum += addend;
+	 *         return csum + (csum < addend);
+	 *     }
+	 *
+	 * So an alternative code to update the checksum might look like this:
+	 *
+	 *     __u16 m0 = * (__u16 *) icmphdr;
+	 *     icmphdr->type = echo_reply;
+	 *     __u16 m1 = * (__u16 *) icmphdr;
+	 *     icmphdr->checksum = ~(csum16_add(csum16_add(~icmphdr->checksum, ~m0), m1));
+	 */
 
 	action = XDP_TX;
 
