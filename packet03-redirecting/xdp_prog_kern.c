@@ -223,7 +223,7 @@ int xdp_redirect_func(struct xdp_md *ctx)
 	int action = XDP_PASS;
 	unsigned char dst[ETH_ALEN] = { 0xae, 0xfb, 0x06, 0x50, 0xcb, 0x12 };
 	/* interface number of 9: left@if2 */
-	unsigned ifindex = 9
+	unsigned ifindex = 9;
 
 	/* These keep track of the next header type and iterator pointer */
 	nh.pos = data;

@@ -1711,6 +1711,109 @@ We see that the it looks like there is a direct communication between the two en
 
 
 
+### Aissign 3: Bidirectional Router
+
+
+
+#### Howto
+
+We set up two interfaces
+
+```sh
+$ eval $(./testenv.sh alias)
+$ t setup -n left --legacy-ip
+$ t setup -n right --legacy-ip
+```
+
+then we load the `xdp_pass_func` for the inner interfaces after entering two virtual environments
+
+```sh
+$ t enter -n left
+# ./xdp_loader --dev veth0 --progname xdp_pass_func
+```
+
+and 
+
+```sh
+$ t enter -n right
+# ./xdp_loader --dev veth0 --progname xdp_pass_func
+```
+
+We then load the two XDP programs to the `left` and `right` interfaces
+
+```sh
+$ sudo ./xdp_loader --dev left --progname xdp_redirect_map_func
+$ sudo ./xdp_loader --dev right --progname xdp_redirect_map_func
+```
+
+We register this bidirectional redirection by updating the BPF table by using the helper script
+
+```sh
+$ t redirect right left
+```
+
+> The `redirect` helpter program 
+
+```c
+populate_redirect_map()
+{
+    local src="$1"
+    local dest="$2"
+    local src_mac=$(ip netns exec $src cat /sys/class/net/veth0/address)
+    local dest_mac=$(ip netns exec $dest cat /sys/class/net/veth0/address)
+
+    # set bidirectional forwarding
+    ./xdp_prog_user -d $src -r $dest --src-mac $src_mac --dest-mac $dest_mac
+    ./xdp_prog_user -d $dest -r $src --src-mac $dest_mac --dest-mac $src_mac
+}
+```
+
+> This section of code is setting up redirection rules for network traffic using XDP between two network namespaces. It queries the MAC addresses of the network interfaces within the namespaces and uses them as parameters when invoking the `xdp_prog_user` program to establish bidirectional forwarding of traffic. 
+
+ 
+
+enter the left interface and then `ping` the right interface
+
+```sh
+$ t enter -n left
+# ping fc00:dead:cafe:2::2
+```
+
+Check if the packets are forwarded 
+
+```sh
+$ sudo ./xdp_stats -d right
+
+Collecting stats from BPF map
+ - BPF map (bpf_map_type:6) id:183 name:xdp_stats_map key_size:4 value_size:16 max_entries:5
+XDP-action
+XDP_ABORTED            0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250185
+XDP_DROP               0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250239
+XDP_PASS               0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250234
+XDP_TX                 0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250231
+XDP_REDIRECT        1303 pkts (         0 pps)         153 Kbytes (     0 Mbits/s) period:0.250228
+
+^C
+```
+
+
+
+
+
+
+
+
+
+
+
+### Two BPF maps
+
+* **`tx_port` Map:** associates network device IDs with integer values. It's likely used to manage or track specific properties or configurations related to different network devices. The integer values associated with the network device IDs could represent various attributes, such as transmission ports or settings.
+
+* **`redirect_params` Map:** stores Ethernet MAC addresses as keys and their corresponding MAC addresses as values. This is likely used for defining redirection rules for network traffic. When the source MAC address matches a key in this map, the corresponding value (destination MAC address) is used to redirect the traffic.
+
+
+
 
 
 ## AF_XDP
