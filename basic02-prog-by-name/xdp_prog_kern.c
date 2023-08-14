@@ -24,6 +24,8 @@ SEC("xdp")
 int  xdp_drop_func(struct xdp_md *ctx)
 {
 	return XDP_DROP;
+        /* if we return XDP_ABORTED, `xdp_exception:` can be recorded by the
+         * trace command. */
 }
 
 /* Assignment#2: Add new XDP program section that use XDP_ABORTED */

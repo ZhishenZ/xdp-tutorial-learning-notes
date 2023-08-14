@@ -1942,6 +1942,154 @@ XDP_REDIRECT           8 pkts (         0 pps)           0 Kbytes (     0 Mbits/
 
 
 
+## Tutorial 8 Monitor XDP tracepoint
+
+* This tutorial mainly shows how a user space program `trace_load_and_stats.c`can access the tracing data of a XDP tracing instance (`SEC("tracepoint/xdp/xdp_exception")`) and tracks the number of the `xdp:xdp_exception` as the program `trace_load_and_stats.c` runs.
+
+* The trace point can also be traced by the `trace-cmd`
+  ```sh
+  $ sudo trace-cmd record -e "xdp:xdp_exception"
+  Hit Ctrl^C to stop recording
+  ^CCPU0 data recorded at offset=0xad1000
+      0 bytes in size
+  CPU1 data recorded at offset=0xad1000
+      0 bytes in size
+  CPU2 data recorded at offset=0xad1000
+      4096 bytes in size
+  CPU3 data recorded at offset=0xad2000
+      0 bytes in size
+  CPU4 data recorded at offset=0xad2000
+      4096 bytes in size
+  CPU5 data recorded at offset=0xad3000
+      0 bytes in size
+  CPU6 data recorded at offset=0xad3000
+      0 bytes in size
+  CPU7 data recorded at offset=0xad3000
+      0 bytes in size
+  $ sudo trace-cmd report -l
+  trace-cmd: No such file or directory
+    Error: expected type 4 but read 5
+  CPU 0 is empty
+  CPU 1 is empty
+  CPU 3 is empty
+  CPU 5 is empty
+  CPU 6 is empty
+  CPU 7 is empty
+  cpus=8
+      ping-10053   2..s1  5602.514199: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5603.531297: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5604.555236: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5605.579193: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5606.603211: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5607.627185: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5608.651087: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5609.675123: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5610.699099: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5611.727110: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5612.747035: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5613.771018: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   2..s1  5614.794978: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+      ping-10053   4..s1  5615.818884: xdp_exception:        prog_id=158 action=ABORTED ifindex=11
+  ```
+
+  
+
+
+
+The eBPF programs can be attached also to tracepoints. 
+
+There are several tracepoints related to the xdp tracepoint subsystem:
+
+```sh
+$ sudo ls /sys/kernel/debug/tracing/events/xdp/
+mem_disconnect     
+xdp_cpumap_enqueue  
+xdp_exception     
+xdp_redirect_map
+mem_return_failed  
+xdp_cpumap_kthread  
+xdp_redirect      
+xdp_redirect_map_err
+mem_connect  
+xdp_bulk_tx        
+xdp_devmap_xmit     
+xdp_redirect_err 
+```
+
+### Tracepoint program section
+
+The bpf library expects the tracepoint eBPF program to be stored in a section with following name:
+
+```sh
+tracepoint/<sys>/<tracepoint>
+```
+
+where `<sys>` is the tracepoint subsystem and `<tracepoint>` is the tracepoint name, which can be done with following construct:
+
+```sh
+SEC("tracepoint/xdp/xdp_exception")
+int trace_xdp_exception(struct xdp_exception_ctx *ctx)
+```
+
+### Tracepoint arguments
+
+There’s single program pointer argument which points to the structure, that defines the tracepoint fields. Like for `xdp:xdp_exception` tracepoint:
+
+```c
+struct xdp_exception_ctx {
+        __u64 __pad;      // First 8 bytes are not accessible by bpf code
+        __s32 prog_id;    //      offset:8;  size:4; signed:1;
+        __u32 act;        //      offset:12; size:4; signed:0;
+        __s32 ifindex;    //      offset:16; size:4; signed:1;
+};
+
+int trace_xdp_exception(struct xdp_exception_ctx *ctx)
+```
+
+This struct is exported in tracepoint format file:
+
+```sh
+# cat /sys/kernel/debug/tracing/events/xdp/xdp_exception/format
+...
+        field:unsigned short common_type;       offset:0;       size:2; signed:0;
+        field:unsigned char common_flags;       offset:2;       size:1; signed:0;
+        field:unsigned char common_preempt_count;       offset:3;       size:1; signed:0;
+        field:int common_pid;   offset:4;       size:4; signed:1;
+
+        field:int prog_id;      offset:8;       size:4; signed:1;
+        field:u32 act;  offset:12;      size:4; signed:0;
+        field:int ifindex;      offset:16;      size:4; signed:1;
+...
+```
+
+
+
+### Tracepoint attaching
+
+To load a tracepoint program for this example we use following bpf library helper functions:
+
+```c
+struct bpf_object *obj;
+int err;
+struct bpf_link *link;
+
+obj = bpf_object__open_file(cfg->filename, NULL);
+...
+err = bpf_object__load(obj);
+...
+link = bpf_program__attach_tracepoint(prog, "xdp", "xdp_exception");
+```
+
+To attach the program to the tracepoint we need to create a tracepoint perf event and attach the eBPF program to it, using its file descriptor. Under the hood this function sets up the `PERF_EVENT_IOC_SET_BPF` ioctl call:
+
+```c
+bpf_program__attach_tracepoint(prog, "xdp", "xdp_exception");
+```
+
+
+
+#### 
+
 
 
 
