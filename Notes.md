@@ -1800,17 +1800,147 @@ XDP_REDIRECT        1303 pkts (         0 pps)         153 Kbytes (     0 Mbits/
 
 
 
+#### TTL and HOP Limit 
+
+TTL (Time-to-Live) and hop limit are both mechanisms used in networking to prevent packets from circulating indefinitely in a network and to manage the lifetime of packets. They are primarily used to ensure that packets are not stuck in loops or congested networks, and they provide a way to limit the time a packet spends in a network.
+
+1. **TTL (Time-to-Live)**: TTL is a field in the IP header of IPv4 packets. It represents the number of hops (routers or gateways) that a packet is allowed to make before it is discarded. Each time a packet passes through a router, its TTL value is decremented by one. If the TTL reaches zero, the packet is discarded. The primary purpose of TTL is to prevent packets from endlessly circulating in the network, which could lead to congestion and waste of network resources.
+2. **Hop Limit**: Hop limit is the equivalent concept for IPv6 packets. It is also known as "Time-to-Live" in IPv6, even though the name is slightly misleading. Like TTL in IPv4, the hop limit field in the IPv6 header represents the number of hops a packet is allowed to make. It is decremented by one at each router or gateway the packet passes through. If the hop limit reaches zero, the packet is dropped.
 
 
 
-
-
-
-### Two BPF maps
+#### Two BPF maps
 
 * **`tx_port` Map:** associates network device IDs with integer values. It's likely used to manage or track specific properties or configurations related to different network devices. The integer values associated with the network device IDs could represent various attributes, such as transmission ports or settings.
 
 * **`redirect_params` Map:** stores Ethernet MAC addresses as keys and their corresponding MAC addresses as values. This is likely used for defining redirection rules for network traffic. When the source MAC address matches a key in this map, the corresponding value (destination MAC address) is used to redirect the traffic.
+
+
+
+### Assign 4: 
+
+
+
+
+
+#### bpf_fib_lookup
+
+`bpf_fib_lookup` is a helper function provided by the Linux kernel that allows an eBPF program to perform a FIB lookup. This function takes an input packet and returns the result of the FIB lookup, which typically includes information about the next-hop or outgoing interface for the packet.
+
+
+
+
+
+
+
+#### IP forwarding
+
+IP forwarding, also known as packet forwarding, is a networking feature that allows a device, typically a router or a computer, to route network packets from one network segment to another. In simpler terms, it enables the device to act as an intermediary that directs data traffic between different networks.
+
+
+
+#### HowTo
+
+Create three test environments
+
+```sh
+$ t setup -n uno --legacy-ip
+$ t setup -n dos --legacy-ip
+$ t setup -n dres --legacy-ip
+```
+
+and then enable the IP forwarding
+
+```sh
+$ sudo sysctl net.ipv4.conf.all.forwarding=1
+$ sudo sysctl net.ipv6.conf.all.forwarding=1
+```
+
+attach the `xdp_pass_func` function to the three inner virtual interfaces 
+
+```sh
+$ t enter -n uno
+# ./xdp_loader --dev veth0 --progname xdp_pass_func
+```
+
+```sh
+$ t enter -n dos
+# ./xdp_loader --dev veth0 --progname xdp_pass_func
+```
+
+```sh
+$ t enter -n dres
+# ./xdp_loader --dev veth0 --progname xdp_pass_func
+```
+
+Load the XDP functions `xdp_router_func` into the three interfaces so that the network interfaces perform a redirection when network packet come to the interfaces. 
+
+```sh
+$ sudo ./xdp_loader --dev uno --progname xdp_router_func
+$ sudo ./xdp_loader --dev dos --progname xdp_router_func
+$ sudo ./xdp_loader --dev tres --progname xdp_router_func
+```
+
+Then we can ping under the 6 interfaces. For example we can enter:
+
+```sh
+$ t enter -n tres
+```
+
+and then ping the `dos` interface by
+
+```sh
+# ping fc00:dead:cafe:2::1
+PING fc00:dead:cafe:2::1(fc00:dead:cafe:2::1) 56 data bytes
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=1 ttl=64 time=0.055 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=2 ttl=64 time=0.112 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=3 ttl=64 time=0.099 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=4 ttl=64 time=0.109 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=5 ttl=64 time=0.082 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=6 ttl=64 time=0.140 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=7 ttl=64 time=0.094 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=8 ttl=64 time=0.140 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=9 ttl=64 time=0.077 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=10 ttl=64 time=0.144 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=11 ttl=64 time=0.079 ms
+64 bytes from fc00:dead:cafe:2::1: icmp_seq=12 ttl=64 time=0.140 ms
+^C
+--- fc00:dead:cafe:2::1 ping statistics ---
+12 packets transmitted, 12 received, 0% packet loss, time 11261ms
+rtt min/avg/max/mdev = 0.055/0.105/0.144/0.028 ms
+# ping fc00:dead:cafe:2::2
+PING fc00:dead:cafe:2::2(fc00:dead:cafe:2::2) 56 data bytes
+64 bytes from fc00:dead:cafe:2::2: icmp_seq=1 ttl=63 time=0.067 ms
+64 bytes from fc00:dead:cafe:2::2: icmp_seq=2 ttl=63 time=0.103 ms
+64 bytes from fc00:dead:cafe:2::2: icmp_seq=3 ttl=63 time=0.092 ms
+64 bytes from fc00:dead:cafe:2::2: icmp_seq=4 ttl=63 time=0.102 ms
+64 bytes from fc00:dead:cafe:2::2: icmp_seq=5 ttl=63 time=0.102 ms
+^C
+```
+
+
+
+We can check the Redirecting by checking the BPF map
+
+``` sh
+(base) clemens@ThinkPad-P15s:~/KUKA/xdp-tutorial-learning-notes/packet03-redirecting$ sudo ./xdp_stats -d dos
+[sudo] password for clemens: 
+
+Collecting stats from BPF map
+ - BPF map (bpf_map_type:6) id:23 name:xdp_stats_map key_size:4 value_size:16 max_entries:5
+XDP-action  
+XDP_ABORTED            0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250156
+XDP_DROP               0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250130
+XDP_PASS               2 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250131
+XDP_TX                 0 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250132
+XDP_REDIRECT           8 pkts (         0 pps)           0 Kbytes (     0 Mbits/s) period:0.250132
+
+^C
+```
+
+
+
+
 
 
 
