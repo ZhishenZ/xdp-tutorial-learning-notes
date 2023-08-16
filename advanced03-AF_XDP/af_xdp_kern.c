@@ -52,6 +52,10 @@ int xdp_sock_prog(struct xdp_md *ctx)
 		goto out;
 	}
 
+	/* If there is a VLAN tag, remove it before redirecting it to user space program */
+	if (proto_is_vlan(eth->h_proto))
+		vlan_tag_pop(ctx,eth);
+
 	/* Do we know where to redirect this packet? */
 	dst = bpf_map_lookup_elem(&xdp_stats_map_local, &index);
 	if (!dst)
